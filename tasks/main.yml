@@ -66,7 +66,6 @@
     data:
       address: "{{ container_ip }}"
     state: absent
-  when: newipaddress.changed
 
 - name: "Add IP to VM"
   netbox.netbox.netbox_ip_address:
