@@ -1,0 +1,4 @@
+---
+# defaults file for docker-netbox
+netbox_url: "netbox.fab-it.biz"
+prefixes: "192.168.0.0/24"

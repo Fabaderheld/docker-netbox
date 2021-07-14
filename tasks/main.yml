@@ -1,0 +1,199 @@
+---
+- name: "Set_Fact new Docker to False"
+  set_fact:
+    new_docker: False
+
+- name: "Check existing IP for {{ container_name }}"
+  uri:
+    url: "http://{{ netbox_url }}/api/ipam/ip-addresses/?dns_name={{ container_name }}"
+    method: GET
+    headers:
+      Content-Type: application/json
+      Authorization: "Token {{ netbox_apitoken }}"
+  register: ipaddress
+
+- name: "Set_Fact to new Docker"
+  set_fact:
+    new_docker: True
+  when: ipaddress['json']['count'] == 0
+
+- name: "Set_Fact Container IP - Existing Container"
+  set_fact:
+    container_ip: "{{ ipaddress['json']['results'][0]['address'] }}"
+  when: not new_docker
+
+- name: "Get next free IP - New Container"
+  netbox.netbox.netbox_ip_address:
+    netbox_url: "http://{{ netbox_url }}"
+    netbox_token: "{{ netbox_apitoken }}"
+    data:
+      prefix: "{{ prefixes }}"
+    state: new
+  when: new_docker
+  register: newipaddress
+
+- name: "Set_Fact Container IP - New Container"
+  set_fact:
+    container_ip: "{{ newipaddress['ip_address']['address'] }}"
+  when: new_docker
+
+- name: "Create Docker VM {{ container_name }} in Netbox"
+  netbox.netbox.netbox_virtual_machine:
+    netbox_url: "http://{{ netbox_url }}"
+    netbox_token: "{{ netbox_apitoken }}"
+    data:
+      name: "{{ container_name }}"
+      cluster: Nuccy
+      custom_fields: # New to be created before hand in Netbox
+        port: "{{ container_port }}"
+        internal_url: "http://{{ container_ip }}:{{ container_port }}"
+        external_url: "https://{{ container_name }}.fab-it.biz"
+    state: present
+
+- name: "Create VM Interface"
+  netbox.netbox.netbox_vm_interface:
+    netbox_url: "http://{{ netbox_url }}"
+    netbox_token: "{{ netbox_apitoken }}"
+    data:
+      virtual_machine: "{{ container_name }}"
+      name: GigabitEthernet1
+    state: present
+
+- name: "Delete IP to avoid doublicate addresses"
+  netbox.netbox.netbox_ip_address:
+    netbox_url: "http://{{ netbox_url }}"
+    netbox_token: "{{ netbox_apitoken }}"
+    data:
+      address: "{{ container_ip }}"
+    state: absent
+  when: newipaddress.changed
+
+- name: "Add IP to VM"
+  netbox.netbox.netbox_ip_address:
+    netbox_url: "http://{{ netbox_url }}"
+    netbox_token: "{{ netbox_apitoken }}"
+    data:
+      address: "{{ container_ip }}"
+      assigned_object:
+        name: GigabitEthernet1
+        virtual_machine: "{{ container_name }}"
+      dns_name: "{{ container_name }}"
+    state: present
+
+  # register: ipaddress
+- name: "Create Docker VM in Netbox"
+  netbox.netbox.netbox_virtual_machine:
+    netbox_url: "http://{{ netbox_url }}"
+    netbox_token: "{{ netbox_apitoken }}"
+    data:
+      name: "{{ container_name }}"
+      cluster: Nuccy
+      primary_ip4: "{{ container_ip }}"
+    state: present
+  register: netbox_vm
+
+- name: "Create Traefik folder"
+  file:
+    state: directory
+    path: "{{ item }}"
+  with_items:
+    - "{{ docker_appdata }}/{{ container_name }}/"
+    - "{{ docker_appdata }}/{{ container_name }}/logs"
+    - "{{ docker_appdata }}/{{ container_name }}/letsencrypt"
+    - "{{ docker_appdata }}/{{ docker.authelia.name }}-redis/"
+    - "{{ docker_appdata }}/{{ docker.authelia.name }}-redis/data"
+    - "{{ docker_appdata }}/{{ docker.authelia.name }}-redis/conf"
+    - "{{ docker_appdata }}/{{ docker.authelia.name }}-postgres/"
+
+- name: "Create Traefik Config"
+  template:
+    src: "{{ playbook_dir }}/config/traefik/traefik.yml"
+    dest: "{{ docker_appdata }}/{{ container_name }}/traefik.yml"
+    mode: "0644"
+    owner: root
+    group: root
+
+  register: traefik
+
+- name: "Create {{ container_name }} tmp folder"
+  file:
+    path: "{{ docker_temppath }}/{{ container_name }}"
+    mode: "777"
+    owner: root
+    group: root
+    state: directory
+    recurse: yes
+
+- name: "Create {{ container_name }} Docker Compose file"
+  template:
+    src: "{{ playbook_dir }}/Docker/{{ container_name }}/docker-compose.yml"
+    dest: "{{ docker_temppath }}//{{ container_name }}/docker-compose.yml"
+    mode: "0644"
+    owner: root
+    group: root
+
+  ignore_errors: yes
+
+- name: "Create Redis folder"
+  file:
+    state: directory
+    path: "{{ item }}"
+  with_items:
+    - "{{ docker_appdata }}/{{ docker.authelia.name }}-redis/"
+    - "{{ docker_appdata }}/{{ docker.authelia.name }}-redis/data"
+    - "{{ docker_appdata }}/{{ docker.authelia.name }}-redis/conf"
+  tags:
+    - docker
+
+- name: "Create Redis config file"
+  template:
+    src: "{{ playbook_dir }}/config/redis_authelia/redis.conf"
+    dest: "{{ docker_appdata }}/{{ docker.authelia.name }}-redis/conf/redis.conf"
+    mode: "0644"
+    owner: root
+    group: root
+
+- name: "Create Authelia config file"
+  template:
+    src: "{{ playbook_dir }}/config/authelia/configuration.yml"
+    dest: "{{ docker_appdata }}/{{ docker.authelia.name }}/configuration.yml"
+    mode: "0640"
+    owner: root
+    group: docker
+
+- name: "Get container info from {{ container_name }}"
+  community.docker.docker_container_info:
+    name: "{{ container_name }}"
+  register: containerinfo
+
+- name: "Set Container Mac on VM Interface"
+  netbox.netbox.netbox_vm_interface:
+    netbox_url: "http://{{ netbox_url }}"
+    netbox_token: "{{ netbox_apitoken }}"
+    data:
+      virtual_machine: "{{ container_name }}"
+      name: GigabitEthernet1
+      mac_address: "{{ containerinfo['container']['NetworkSettings']['Networks']['Docker']['MacAddress'] }}"
+    state: present
+
+- name: "Add DNS Records"
+  uri:
+    url: "https://dns.hetzner.com/api/v1/records"
+    method: POST
+    headers:
+      Content-Type: application/json
+      Auth-API-Token: "{{ hetzner_apitoken }}"
+    body:
+      {
+        "value": "home.fab-it.biz.",
+        "ttl": 86400,
+        "type": "CNAME",
+        "name": "{{ container_name }}",
+        "zone_id": "ouWiSmyvwUeX8eZHdCwf23",
+      }
+    body_format: json
+  register: dnsanswer
+  changed_when: dnsanswer.status == 200
+  failed_when: dnsanswer.status != 422 and dnsanswer.status != 200
+  ignore_errors: yes
+  when: netbox_vm.changed
