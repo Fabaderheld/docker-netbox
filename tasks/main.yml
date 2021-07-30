@@ -1,4 +1,8 @@
 ---
+- name: "Install pynetbox"
+  pip:
+    name: pynetbox
+
 - name: "Set_Fact new Docker to False"
   set_fact:
     new_docker: False
