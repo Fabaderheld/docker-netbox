@@ -55,7 +55,7 @@
       cluster: Nuccy
       custom_fields: # New to be created before hand in Netbox
         port: "{{ container_port }}"
-        internal_url: "http://{{ container_ip }}:{{ container_port }}"
+        internal_url: "http://{{ container_ip.split('/')[0] }}:{{ container_port }}"
         external_url: "https://{{ container_name }}.fab-it.biz"
     state: present
   tags: prestartup
