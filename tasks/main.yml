@@ -57,6 +57,7 @@
         port: "{{ container_port }}"
         internal_url: "http://{{ container_ip.split('/')[0] }}:{{ container_port }}"
         external_url: "https://{{ container_name }}.fab-it.biz"
+        external: "{{ external }}"
     state: present
   tags: prestartup
 
