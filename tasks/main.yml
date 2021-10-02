@@ -9,7 +9,7 @@
 
 - name: "Check existing IP for {{ container_name }}"
   uri:
-    url: "http://{{ netbox_url }}/api/ipam/ip-addresses/?dns_name={{ container_name }}"
+    url: "https://{{ netbox_url }}/api/ipam/ip-addresses/?dns_name={{ container_name }}"
     method: GET
     headers:
       Content-Type: application/json
@@ -31,7 +31,7 @@
 
 - name: "Get next free IP - New Container"
   netbox.netbox.netbox_ip_address:
-    netbox_url: "http://{{ netbox_url }}"
+    netbox_url: "https://{{ netbox_url }}"
     netbox_token: "{{ netbox_apitoken }}"
     data:
       prefix: "{{ prefixes }}"
@@ -48,7 +48,7 @@
 
 - name: "Create Docker VM {{ container_name }} in Netbox"
   netbox.netbox.netbox_virtual_machine:
-    netbox_url: "http://{{ netbox_url }}"
+    netbox_url: "https://{{ netbox_url }}"
     netbox_token: "{{ netbox_apitoken }}"
     data:
       name: "{{ container_name }}"
@@ -63,7 +63,7 @@
 
 - name: "Create VM Interface"
   netbox.netbox.netbox_vm_interface:
-    netbox_url: "http://{{ netbox_url }}"
+    netbox_url: "https://{{ netbox_url }}"
     netbox_token: "{{ netbox_apitoken }}"
     data:
       virtual_machine: "{{ container_name }}"
@@ -73,7 +73,7 @@
 
 - name: "Delete IP to avoid doublicate addresses"
   netbox.netbox.netbox_ip_address:
-    netbox_url: "http://{{ netbox_url }}"
+    netbox_url: "https://{{ netbox_url }}"
     netbox_token: "{{ netbox_apitoken }}"
     data:
       address: "{{ container_ip }}"
@@ -82,7 +82,7 @@
 
 - name: "Add IP to VM"
   netbox.netbox.netbox_ip_address:
-    netbox_url: "http://{{ netbox_url }}"
+    netbox_url: "https://{{ netbox_url }}"
     netbox_token: "{{ netbox_apitoken }}"
     data:
       address: "{{ container_ip }}"
@@ -96,7 +96,7 @@
   # register: ipaddress
 - name: "Create Docker VM in Netbox"
   netbox.netbox.netbox_virtual_machine:
-    netbox_url: "http://{{ netbox_url }}"
+    netbox_url: "https://{{ netbox_url }}"
     netbox_token: "{{ netbox_apitoken }}"
     data:
       name: "{{ container_name }}"
